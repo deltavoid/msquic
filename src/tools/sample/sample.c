@@ -200,12 +200,14 @@ ServerSend(
     //
     // Allocates and builds the buffer to send over the stream.
     //
+    printf("ServerSend: 1\n");
     void* SendBufferRaw = malloc(sizeof(QUIC_BUFFER) + SendBufferLength);
     if (SendBufferRaw == NULL) {
         printf("SendBuffer allocation failed!\n");
         MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
         return;
     }
+    printf("ServerSend: 2\n");
     QUIC_BUFFER* SendBuffer = (QUIC_BUFFER*)SendBufferRaw;
     SendBuffer->Buffer = (uint8_t*)SendBufferRaw + sizeof(QUIC_BUFFER);
     SendBuffer->Length = SendBufferLength;
@@ -217,12 +219,16 @@ ServerSend(
     // the buffer. This indicates this is the last buffer on the stream and the
     // the stream is shut down (in the send direction) immediately after.
     //
+    printf("ServerSend: 3\n");
     QUIC_STATUS Status;
     if (QUIC_FAILED(Status = MsQuic->StreamSend(Stream, SendBuffer, 1, QUIC_SEND_FLAG_FIN, SendBuffer))) {
+        printf("ServerSend: 4\n");
         printf("StreamSend failed, 0x%x!\n", Status);
         free(SendBufferRaw);
         MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
     }
+
+    printf("ServerSend: 5, end\n");
 }
 
 //
@@ -239,12 +245,15 @@ ServerStreamCallback(
     )
 {
     UNREFERENCED_PARAMETER(Context);
+
+    printf("ServerStreamCallback: 1\n");
     switch (Event->Type) {
     case QUIC_STREAM_EVENT_SEND_COMPLETE:
         //
         // A previous StreamSend call has completed, and the context is being
         // returned back to the app.
         //
+        printf("ServerStreamCallback: 2, QUIC_STREAM_EVENT_SEND_COMPLETE\n");
         free(Event->SEND_COMPLETE.ClientContext);
         printf("[strm][%p] Data sent\n", Stream);
         break;
@@ -252,12 +261,14 @@ ServerStreamCallback(
         //
         // Data was received from the peer on the stream.
         //
+        printf("ServerStreamCallback: 3, QUIC_STREAM_EVENT_RECEIVE\n");
         printf("[strm][%p] Data received\n", Stream);
         break;
     case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
         //
         // The peer gracefully shut down its send direction of the stream.
         //
+        printf("ServerStreamCallback: 4, QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN\n");
         printf("[strm][%p] Peer shut down\n", Stream);
         ServerSend(Stream);
         break;
@@ -265,6 +276,7 @@ ServerStreamCallback(
         //
         // The peer aborted its send direction of the stream.
         //
+        printf("ServerStreamCallback: 5, QUIC_STREAM_EVENT_PEER_SEND_ABORTED\n");
         printf("[strm][%p] Peer aborted\n", Stream);
         MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
         break;
@@ -273,12 +285,16 @@ ServerStreamCallback(
         // Both directions of the stream have been shut down and MsQuic is done
         // with the stream. It can now be safely cleaned up.
         //
+        printf("ServerStreamCallback: 6, QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE\n");
         printf("[strm][%p] All done\n", Stream);
         MsQuic->StreamClose(Stream);
         break;
     default:
+        printf("ServerStreamCallback: 7, default\n");
         break;
     }
+
+    printf("ServerStreamCallback: 8, end\n");
     return QUIC_STATUS_SUCCESS;
 }
 
@@ -296,11 +312,14 @@ ServerConnectionCallback(
     )
 {
     UNREFERENCED_PARAMETER(Context);
+
+    printf("ServerConnectionCallback: 1\n");
     switch (Event->Type) {
     case QUIC_CONNECTION_EVENT_CONNECTED:
         //
         // The handshake has completed for the connection.
         //
+        printf("ServerConnectionCallback: 2, QUIC_CONNECTION_EVENT_CONNECTED\n");
         printf("[conn][%p] Connected\n", Connection);
         MsQuic->ConnectionSendResumptionTicket(Connection, QUIC_SEND_RESUMPTION_FLAG_NONE, 0, NULL);
         break;
@@ -310,9 +329,12 @@ ServerConnectionCallback(
         // is the expected way for the connection to shut down with this
         // protocol, since we let idle timeout kill the connection.
         //
+        printf("ServerConnectionCallback: 3, QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT\n");
         if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status == QUIC_STATUS_CONNECTION_IDLE) {
+            printf("ServerConnectionCallback: 3.1\n");
             printf("[conn][%p] Successfully shut down on idle.\n", Connection);
         } else {
+            printf("ServerConnectionCallback: 3.2\n");
             printf("[conn][%p] Shut down by transport, 0x%x\n", Connection, Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status);
         }
         break;
@@ -320,6 +342,7 @@ ServerConnectionCallback(
         //
         // The connection was explicitly shut down by the peer.
         //
+        printf("ServerConnectionCallback: 4, QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER\n");
         printf("[conn][%p] Shut down by peer, 0x%llu\n", Connection, (unsigned long long)Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
         break;
     case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
@@ -327,6 +350,7 @@ ServerConnectionCallback(
         // The connection has completed the shutdown process and is ready to be
         // safely cleaned up.
         //
+        printf("ServerConnectionCallback: 5, QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE\n");
         printf("[conn][%p] All done\n", Connection);
         MsQuic->ConnectionClose(Connection);
         break;
@@ -335,6 +359,7 @@ ServerConnectionCallback(
         // The peer has started/created a new stream. The app MUST set the
         // callback handler before returning.
         //
+        printf("ServerConnectionCallback: 6, QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED\n");
         printf("[strm][%p] Peer started\n", Event->PEER_STREAM_STARTED.Stream);
         MsQuic->SetCallbackHandler(Event->PEER_STREAM_STARTED.Stream, (void*)ServerStreamCallback, NULL);
         break;
@@ -343,11 +368,15 @@ ServerConnectionCallback(
         // The connection succeeded in doing a TLS resumption of a previous
         // connection's session.
         //
+        printf("ServerConnectionCallback: 7, QUIC_CONNECTION_EVENT_RESUMED\n");
         printf("[conn][%p] Connection resumed!\n", Connection);
         break;
     default:
+        printf("ServerConnectionCallback: 8, default\n");
         break;
     }
+
+    printf("ServerConnectionCallback: 9, end\n");
     return QUIC_STATUS_SUCCESS;
 }
 
@@ -367,6 +396,8 @@ ServerListenerCallback(
     UNREFERENCED_PARAMETER(Listener);
     UNREFERENCED_PARAMETER(Context);
     QUIC_STATUS Status = QUIC_STATUS_NOT_SUPPORTED;
+    
+    printf("ServerListenerCallback: 1\n");
     switch (Event->Type) {
     case QUIC_LISTENER_EVENT_NEW_CONNECTION:
         //
@@ -374,12 +405,16 @@ ServerListenerCallback(
         // proceed, the server must provide a configuration for QUIC to use. The
         // app MUST set the callback handler before returning.
         //
+        printf("ServerListenerCallback: 2, QUIC_LISTENER_EVENT_NEW_CONNECTION\n");
         MsQuic->SetCallbackHandler(Event->NEW_CONNECTION.Connection, (void*)ServerConnectionCallback, NULL);
         Status = MsQuic->ConnectionSetConfiguration(Event->NEW_CONNECTION.Connection, Configuration);
         break;
     default:
+        printf("ServerListenerCallback: 3, default\n");
         break;
     }
+
+    printf("ServerListenerCallback: 4, end\n");
     return Status;
 }
 
@@ -506,6 +541,7 @@ RunServer(
     // Configures the address used for the listener to listen on all IP
     // addresses and the given UDP port.
     //
+    printf("RunServer: 1\n");
     QUIC_ADDR Address = {0};
     QuicAddrSetFamily(&Address, QUIC_ADDRESS_FAMILY_UNSPEC);
     QuicAddrSetPort(&Address, UdpPort);
@@ -513,6 +549,7 @@ RunServer(
     //
     // Load the server configuration based on the command line.
     //
+    printf("RunServer: 2\n");
     if (!ServerLoadConfiguration(argc, argv)) {
         return;
     }
@@ -520,6 +557,7 @@ RunServer(
     //
     // Create/allocate a new listener object.
     //
+    printf("RunServer: 3\n");
     if (QUIC_FAILED(Status = MsQuic->ListenerOpen(Registration, ServerListenerCallback, NULL, &Listener))) {
         printf("ListenerOpen failed, 0x%x!\n", Status);
         goto Error;
@@ -528,6 +566,7 @@ RunServer(
     //
     // Starts listening for incoming connections.
     //
+    printf("RunServer: 4\n");
     if (QUIC_FAILED(Status = MsQuic->ListenerStart(Listener, &Alpn, 1, &Address))) {
         printf("ListenerStart failed, 0x%x!\n", Status);
         goto Error;
@@ -536,14 +575,18 @@ RunServer(
     //
     // Continue listening for connections until the Enter key is pressed.
     //
+    printf("RunServer: 5\n");
     printf("Press Enter to exit.\n\n");
     getchar();
 
 Error:
 
+    printf("RunServer: 6\n");
     if (Listener != NULL) {
         MsQuic->ListenerClose(Listener);
     }
+
+    printf("RunServer: 7, end\n");
 }
 
 //
